@@ -1,9 +1,17 @@
 use winreg::enums::*;
 use winreg::RegKey;
 use std::env;
+use std::collections::HashSet;
+use serde::Serialize;
 
 const APP_NAME: &str = "BrowserRouter";
 const APP_DESCRIPTION: &str = "Routes links between browsers";
+
+#[derive(Serialize, Clone)]
+pub struct BrowserInfo {
+    pub name: String,
+    pub exe_path: String,
+}
 
 pub fn register() -> Result<(), String> {
     let exe_path = env::current_exe().map_err(|e| e.to_string())?;
@@ -54,4 +62,48 @@ pub fn unregister() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+pub fn get_installed_browsers() -> Vec<BrowserInfo> {
+    let mut browsers = Vec::new();
+    let mut seen_paths = HashSet::new();
+
+    let paths_to_check = [
+        (HKEY_LOCAL_MACHINE, r"SOFTWARE\Clients\StartMenuInternet"),
+        (HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Clients\StartMenuInternet"),
+        (HKEY_CURRENT_USER, r"SOFTWARE\Clients\StartMenuInternet"),
+    ];
+
+    for (root, path) in paths_to_check {
+        let hive = RegKey::predef(root);
+        let Ok(start_menu_internet) = hive.open_subkey(path) else {
+            continue;
+        };
+
+        for key_name in start_menu_internet.enum_keys().flatten() {
+            let Ok(browser_key) = start_menu_internet.open_subkey(&key_name) else {
+                continue;
+            };
+
+            let name: String = browser_key.get_value("").unwrap_or_else(|_| key_name.clone());
+
+            let Ok(command_key) = browser_key.open_subkey(r"shell\open\command") else {
+                continue;
+            };
+
+            let command: String = command_key.get_value("").unwrap_or_default();
+            let exe_path = command.trim().trim_matches('"').to_string();
+
+            if !exe_path.is_empty() && seen_paths.insert(exe_path.clone()) {
+                browsers.push(BrowserInfo { name, exe_path });
+            }
+        }
+    }
+
+    println!("Найдено браузеров: {}", browsers.len());
+    for b in &browsers {
+        println!("  - {} -> {}", b.name, b.exe_path);
+    }
+
+    browsers
 }

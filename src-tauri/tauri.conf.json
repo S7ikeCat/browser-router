@@ -11,12 +11,15 @@
   },
   "app": {
     "windows": [
-      {
-        "title": "browser-router",
-        "width": 800,
-        "height": 600
-      }
-    ],
+  {
+    "title": "browser-router",
+    "width": 900,
+    "height": 700,
+    "minWidth": 640,
+    "minHeight": 480,
+    "resizable": true
+  }
+],
     "security": {
       "csp": null
     }

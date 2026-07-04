@@ -124,6 +124,8 @@ fn run_gui() {
             commands::get_current_ip_command,
             commands::add_trusted_ip,
             commands::remove_trusted_ip,
+            commands::get_installed_browsers,
+            commands::toggle_vpn_protection,
         ])
         .run(tauri::generate_context!())
         .expect("Ошибка запуска Tauri приложения");

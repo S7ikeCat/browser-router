@@ -80,3 +80,18 @@ pub fn remove_trusted_ip(index: usize) -> Result<AppConfig, String> {
     }
     Ok(cfg)
 }
+
+#[tauri::command]
+pub fn get_installed_browsers() -> Vec<registry::BrowserInfo> {
+    registry::get_installed_browsers()
+}
+
+#[tauri::command]
+pub fn toggle_vpn_protection(index: usize) -> Result<AppConfig, String> {
+    let mut cfg = config::load_config();
+    if index < cfg.rules.len() {
+        cfg.rules[index].vpn_protected = !cfg.rules[index].vpn_protected;
+        config::save_config(&cfg);
+    }
+    Ok(cfg)
+}
