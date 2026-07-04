@@ -1,112 +1,130 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod config;
+mod registry;
+mod commands;
 
 use std::env;
 use std::process::Command;
-use winreg::enums::*;
-use winreg::RegKey;
-
-const APP_NAME: &str = "BrowserRouter";
-const APP_DESCRIPTION: &str = "Routes links between browsers";
+use std::thread;
+use std::time::Duration;
+use rfd::{MessageDialog, MessageButtons, MessageDialogResult};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
-        // Запустили без аргументов -> открываем окно настроек (GUI)
         run_gui();
         return;
     }
 
     match args[1].as_str() {
-        "--register" => register(),
-        "--unregister" => unregister(),
+        "--register" => {
+            match registry::register() {
+                Ok(_) => println!("Регистрация завершена успешно!"),
+                Err(e) => eprintln!("Ошибка регистрации: {}", e),
+            }
+        }
+        "--unregister" => {
+            match registry::unregister() {
+                Ok(_) => println!("Регистрация удалена."),
+                Err(e) => eprintln!("Ошибка: {}", e),
+            }
+        }
         url => route_url(url),
     }
 }
 
-// Логика маршрутизации — теперь читает правила из конфига, а не из хардкода
+// Спрашивает текущий публичный IP через внешний сервис.
+// Возвращает None, если не получилось (нет интернета, сервис недоступен и т.д.)
+pub fn get_current_ip() -> Option<String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .ok()?;
+
+    let response = client.get("https://api.ipify.org").send().ok()?;
+    let ip = response.text().ok()?;
+    let ip = ip.trim().to_string();
+
+    if ip.is_empty() {
+        None
+    } else {
+        Some(ip)
+    }
+}
+
 fn route_url(url: &str) {
     let cfg = config::load_config();
 
-    println!("Получен URL: {}", url);
+    let matched = cfg.rules.iter().find(|rule| url.contains(&rule.pattern));
 
-    // Ищем первое подходящее правило
-    let browser_path = cfg
-        .rules
-        .iter()
-        .find(|rule| url.contains(&rule.pattern))
-        .map(|rule| {
-            println!("Совпало правило \"{}\" -> {}", rule.label, rule.browser_path);
-            rule.browser_path.clone()
-        })
-        .unwrap_or_else(|| {
-            println!("Ни одно правило не подошло -> браузер по умолчанию");
-            cfg.default_browser_path.clone()
-        });
-
-    match Command::new(&browser_path).arg(url).spawn() {
-        Ok(_) => println!("Браузер запущен успешно"),
-        Err(e) => eprintln!("Ошибка запуска браузера ({}): {}", browser_path, e),
-    }
-}
-
-// Заглушка — реальный GUI подключим на следующем шаге через Tauri
-fn run_gui() {
-    println!("GUI ещё не подключен — на следующем шаге");
-}
-
-fn register() {
-    let exe_path = match env::current_exe() {
-        Ok(path) => path,
-        Err(e) => {
-            eprintln!("Не удалось определить путь к самой программе: {}", e);
-            return;
-        }
+    let (browser_path, needs_vpn_check) = match matched {
+        Some(rule) => (rule.browser_path.clone(), rule.vpn_protected),
+        None => (cfg.default_browser_path.clone(), false),
     };
-    let exe_path_str = exe_path.to_string_lossy().to_string();
 
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    if needs_vpn_check && cfg.vpn_check_enabled {
+        let current_ip = get_current_ip();
 
-    let (prog_key, _) = hkcu
-        .create_subkey(format!(r"Software\Classes\{}", APP_NAME))
-        .expect("Не удалось создать ключ ProgID");
-    prog_key.set_value("", &APP_DESCRIPTION).expect("Не удалось задать описание");
+        let is_trusted = match &current_ip {
+            Some(ip) => cfg.trusted_ips.contains(ip),
+            None => false, // не смогли проверить -> считаем недоверенным, лучше перебдеть
+        };
 
-    let (command_key, _) = prog_key
-        .create_subkey(r"shell\open\command")
-        .expect("Не удалось создать ключ command");
-    let command_value = format!("\"{}\" \"%1\"", exe_path_str);
-    command_key.set_value("", &command_value).expect("Не удалось задать команду запуска");
+        if !is_trusted {
+            let allowed = confirm_vpn_off(&cfg.ip_check_url, &cfg.default_browser_path);
+            if !allowed {
+                return;
+            }
+        }
+        // Если IP совпал с доверенным -> открываем сразу, без лишних окон
+    }
 
-    let (registered_apps, _) = hkcu
-        .create_subkey(r"Software\RegisteredApplications")
-        .expect("Не удалось открыть RegisteredApplications");
-    registered_apps
-        .set_value(APP_NAME, &format!(r"Software\Classes\{}\Capabilities", APP_NAME))
-        .expect("Не удалось зарегистрировать приложение");
-
-    let (capabilities_key, _) = hkcu
-        .create_subkey(format!(r"Software\Classes\{}\Capabilities", APP_NAME))
-        .expect("Не удалось создать Capabilities");
-    capabilities_key.set_value("ApplicationName", &APP_NAME).expect("ApplicationName");
-    capabilities_key.set_value("ApplicationDescription", &APP_DESCRIPTION).expect("ApplicationDescription");
-
-    let (url_assoc_key, _) = capabilities_key
-        .create_subkey("URLAssociations")
-        .expect("Не удалось создать URLAssociations");
-    url_assoc_key.set_value("http", &APP_NAME).expect("http");
-    url_assoc_key.set_value("https", &APP_NAME).expect("https");
-
-    println!("Регистрация завершена успешно!");
+    let _ = Command::new(&browser_path).arg(url).spawn();
 }
 
-fn unregister() {
-    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-    let _ = hkcu.delete_subkey_all(format!(r"Software\Classes\{}", APP_NAME));
-    if let Ok(registered_apps) = hkcu.open_subkey_with_flags(r"Software\RegisteredApplications", KEY_SET_VALUE) {
-        let _ = registered_apps.delete_value(APP_NAME);
+fn confirm_vpn_off(ip_check_url: &str, checker_browser: &str) -> bool {
+    let step1 = MessageDialog::new()
+        .set_title("Обнаружен незнакомый IP-адрес")
+        .set_description(
+            "Это рабочая ссылка, а твой текущий IP-адрес не входит в список доверенных — возможно, включён VPN.\n\nНажми \"OK\", чтобы открыть страницу с твоим текущим IP-адресом и проверить это.",
+        )
+        .set_buttons(MessageButtons::OkCancel)
+        .show();
+
+    if step1 != MessageDialogResult::Ok {
+        return false;
     }
-    println!("Регистрация удалена.");
+
+    let _ = Command::new(checker_browser).arg(ip_check_url).spawn();
+
+    thread::sleep(Duration::from_secs(1));
+
+    let step2 = MessageDialog::new()
+        .set_title("Подтверждение")
+        .set_description(
+            "Посмотри на IP-адрес, который открылся в браузере.\n\nЕсли это твой настоящий адрес (VPN точно выключен) — нажми \"Да\".\n\nЕсли что-то не так — нажми \"Нет\", ссылка не откроется.",
+        )
+        .set_buttons(MessageButtons::YesNo)
+        .show();
+
+    step2 == MessageDialogResult::Yes
+}
+
+fn run_gui() {
+    tauri::Builder::default()
+        .invoke_handler(tauri::generate_handler![
+            commands::get_config,
+            commands::save_config,
+            commands::add_rule,
+            commands::remove_rule,
+            commands::register_browser,
+            commands::unregister_browser,
+            commands::get_current_ip_command,
+            commands::add_trusted_ip,
+            commands::remove_trusted_ip,
+        ])
+        .run(tauri::generate_context!())
+        .expect("Ошибка запуска Tauri приложения");
 }
