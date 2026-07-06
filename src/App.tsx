@@ -54,6 +54,8 @@ function App() {
   const [newVpnProtected, setNewVpnProtected] = useState(false);
   const [useCustomPath, setUseCustomPath] = useState(false);
 
+  const [useCustomDefaultPath, setUseCustomDefaultPath] = useState(false);
+
   const hasUnsavedChanges =
     draft && saved && JSON.stringify(draft) !== JSON.stringify(saved);
 
@@ -184,6 +186,51 @@ function App() {
         <button onClick={handleRegister}>Зарегистрировать</button>
         <button onClick={handleUnregister}>Отменить регистрацию</button>
       </section>
+
+      <section>
+  <h2>Браузер по умолчанию</h2>
+  <p>
+    Сюда попадают все ссылки, которые не подошли ни под одно правило ниже.
+  </p>
+
+  {!useCustomDefaultPath ? (
+    <select
+      value={draft.default_browser_path}
+      onChange={(e) =>
+        setDraft({ ...draft, default_browser_path: e.target.value })
+      }
+    >
+      {browsers.map((b) => (
+        <option key={b.exe_path} value={b.exe_path}>
+          {b.name}
+        </option>
+      ))}
+      {/* На случай если текущий путь не совпадает ни с одним найденным браузером */}
+      {!browsers.some((b) => b.exe_path === draft.default_browser_path) && (
+        <option value={draft.default_browser_path}>
+          {draft.default_browser_path} (текущий)
+        </option>
+      )}
+    </select>
+  ) : (
+    <input
+      placeholder="Путь к браузеру (.exe)"
+      value={draft.default_browser_path}
+      onChange={(e) =>
+        setDraft({ ...draft, default_browser_path: e.target.value })
+      }
+    />
+  )}
+
+  <label>
+    <input
+      type="checkbox"
+      checked={useCustomDefaultPath}
+      onChange={(e) => setUseCustomDefaultPath(e.target.checked)}
+    />
+    Указать путь вручную
+  </label>
+</section>
 
       <section>
         <h2>Доверенные IP (для VPN-проверки)</h2>
