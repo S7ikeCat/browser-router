@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl  } from "@tauri-apps/plugin-opener";
 import "./App.css";
 
 interface Rule {
@@ -169,9 +170,17 @@ function App() {
     return <div className="container">Загрузка настроек...</div>;
   }
 
+  function openGithub(e: React.MouseEvent) {
+    e.preventDefault();
+    openUrl("https://github.com/S7ikeCat");
+  }
+
   return (
     <div className="container">
       <h1>Browser Router — Настройки</h1>
+      <h2>
+  Made by <a href="#" onClick={openGithub}>S7ikeCat</a>
+</h2>
 
       {hasUnsavedChanges && (
         <div className="unsaved-bar">
