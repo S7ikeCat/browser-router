@@ -22,7 +22,7 @@
 
 ## 🎥 VPN-проверка (The old one)
 
-https://www.loom.com/share/6df2ba931f6f4b2ca273bdf8c11ad0fe
+https://www.loom.com/share/№№№№№№№№№№№№
 
 ## ⚙️ Возможности
 
