@@ -20,7 +20,7 @@
 
 ![Окно настроек](./screenshots/2.png)
 
-## 🎥 VPN-проверка
+## 🎥 VPN-проверка (The old one)
 
 https://www.loom.com/share/6df2ba931f6f4b2ca273bdf8c11ad0fe
 

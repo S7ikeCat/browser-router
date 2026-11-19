@@ -114,6 +114,7 @@ fn confirm_vpn_off(ip_check_url: &str, checker_browser: &str) -> bool {
 
 fn run_gui() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             commands::get_config,
             commands::save_config,
